@@ -1,0 +1,30 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+project.xcworkspace/xcuserdata/
+*.xcuserdatad/
+
+# Build products
+build/
+DerivedData/
+*.ipa
+*.hmap
+*.dSYM/
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Backups y Temp files
+*~
+*.swp
+*.tmp
+*.temp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+EOF
