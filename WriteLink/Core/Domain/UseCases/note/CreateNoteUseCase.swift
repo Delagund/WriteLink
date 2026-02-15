@@ -27,17 +27,18 @@ actor CreateNoteUseCase {
     }
     
     func execute(title: String, content: String = "", createdAt: Date = Date()) async throws -> Note {
-        let newNote = await Note(
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw UseCaseError.invalidInput("El título no puede estar vacío")
+        }
+        
+        let newNote =  Note(
             id: UUID(),
-            title: title,
+            title: trimmedTitle,
             content: content,
             createdAt: createdAt,
             updatedAt: Date()
         )
-        
-        let createdNote = try await repository.create(newNote)
-
-        return createdNote
-        
+        return try await repository.create(newNote)
     }
 }
