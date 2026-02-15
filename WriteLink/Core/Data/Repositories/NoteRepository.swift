@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated actor NoteRepository: NoteRepositoryProtocol {
+actor NoteRepository: NoteRepositoryProtocol {
     
     // MARK: - Properties
         
@@ -17,22 +17,16 @@ nonisolated actor NoteRepository: NoteRepositoryProtocol {
     /// FileManager para operaciones de I/O
     private let fileManager: FileManager
     
-    /// Formato de fecha ISO8601 para serialización
-    /// Ejemplo: "2024-01-15T10:30:00Z"
-    private let dateFormatter: ISO8601DateFormatter
+    /// Serializar el Markdown
+    private let markdownSerializer: MarkdownSerializer
     
-    /// Inicializa el repositorio
-    ///
-    /// **Flujo:**
-    /// 1. Configura el directorio base
-    /// 2. Crea el directorio si no existe
-    /// 3. Configura formateadores
-    ///
-    /// - Parameter baseDirectory: Directorio personalizado (opcional)
-    /// - Throws: `RepositoryError.fileSystemError` si falla la creación
-    
-    init(baseDirectory: URL? = nil) async throws {
-        self.fileManager = FileManager.default
+
+    init(
+        baseDirectory: URL? = nil,
+        markdownSerializer: MarkdownSerializer = MarkdownSerializer()
+        ) async throws {
+            self.fileManager = FileManager.default
+            self.markdownSerializer = markdownSerializer
         
         // Configurar directorio base
         if let customDirectory = baseDirectory {
@@ -54,11 +48,7 @@ nonisolated actor NoteRepository: NoteRepositoryProtocol {
             }
             self.baseDirectory = documentDirectory.appendingPathComponent("WriteLink")
         }
-        
-        // PASO 2: Configurar formateador de fechas
-        self.dateFormatter = ISO8601DateFormatter()
-        self.dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
+   
         // Crea el directorio si no existe
         try await createDirectoryIfNeeded()
     }
@@ -111,25 +101,10 @@ nonisolated actor NoteRepository: NoteRepositoryProtocol {
     /// - Throws: `RepositoryError.decodingError` si el formato es inválido
     private func readNoteFromDisk(url: URL) throws -> Note {
         do {
-            // 1. Leer contenido completo del archivo
             let fileContent = try String(contentsOf: url, encoding: .utf8)
-            
-            // 2. Separar frontmatter de contenido
-            let components = splitFrontmatter(from: fileContent)
-            
-            // 3. Parsear frontmatter YAML
-            let metadata = try parseFrontmatter(components.frontmatter)
-            
-            // 4. Construir Note
-            return Note(
-                id: metadata.id,
-                title: metadata.title,
-                content: components.content,
-                createdAt: metadata.createdAt,
-                updatedAt: metadata.modifiedAt,
-            )
-        } catch let error as RepositoryError {
-            throw error
+            return try markdownSerializer.deserialize(fileContent)
+        } catch let error as MarkdownSerializerError {
+            throw RepositoryError.decodingError(error)
         } catch {
             throw RepositoryError.fileSystemError(error)
         }
@@ -141,135 +116,12 @@ nonisolated actor NoteRepository: NoteRepositoryProtocol {
     ///   - url: URL donde escribir
     /// - Throws: `RepositoryError.encodingError` o `.fileSystemError`
     private func writeNoteToDisk(note: Note, url: URL) throws {
-        // 1. Generar frontmatter YAML
-        let frontmatter = """
-        ---
-        id: \(note.id.uuidString)
-        title: \(escapeYAML(note.title))
-        createdAt: \(dateFormatter.string(from: note.createdAt))
-        modifiedAt: \(dateFormatter.string(from: note.updatedAt))
-        ---
-        
-        """
-        
-        // 2. Combinar frontmatter + contenido
-        let fullContent = frontmatter + note.content
-        
-        // 3. Escribir al disco con opción atomic
-        // .atomic = escribe a archivo temporal, luego rename (previene corrupción)
         do {
-            try fullContent.write(to: url, atomically: true, encoding: .utf8)
+            let markdown = markdownSerializer.serialize(note)
+            try markdown.write(to: url, atomically: true, encoding: .utf8)
         } catch {
             throw RepositoryError.fileSystemError(error)
         }
-    }
-    
-    /// Separa el frontmatter YAML del contenido Markdown
-    ///
-    /// - Parameter content: Contenido completo del archivo
-    /// - Returns: Tupla (frontmatter, content)
-    private func splitFrontmatter(from content: String) -> (frontmatter: String, content: String) {
-        // Buscar delimitadores "---"
-        let lines = content.components(separatedBy: .newlines)
-        
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
-            // No hay frontmatter, todo es contenido
-            return ("", content)
-        }
-        
-        // Encontrar el segundo "---"
-        if let endIndex = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) {
-            let frontmatterLines = lines[1..<endIndex]
-            let contentLines = lines[(endIndex + 1)...]
-            
-            return (
-                frontmatter: frontmatterLines.joined(separator: "\n"),
-                content: contentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        }
-        
-        // Frontmatter malformado
-        return ("", content)
-    }
-    
-    /// Parsea frontmatter YAML a metadata
-    ///
-    /// **Formato esperado:**
-    /// ```
-    /// id: 123e4567-...
-    /// title: Mi Nota
-    /// createdAt: 2024-01-15T10:30:00Z
-    /// modifiedAt: 2024-01-15T15:45:00Z
-    /// ```
-    ///
-    /// - Parameter yaml: String con el frontmatter
-    /// - Returns: Tupla con metadata parseada
-    /// - Throws: `RepositoryError.decodingError` si falta algún campo
-    private func parseFrontmatter(_ yaml: String) throws -> (id: UUID, title: String, createdAt: Date, modifiedAt: Date) {
-        var id: UUID?
-        var title: String?
-        var createdAt: Date?
-        var modifiedAt: Date?
-        
-        // Parsear línea por línea
-        for line in yaml.components(separatedBy: .newlines) {
-            let parts = line.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2 else { continue }
-            
-            let key = parts[0]
-            let value = parts[1]
-            
-            switch key {
-            case "id":
-                id = UUID(uuidString: value)
-            case "title":
-                title = unescapeYAML(value)
-            case "createdAt":
-                createdAt = dateFormatter.date(from: value)
-            case "modifiedAt":
-                modifiedAt = dateFormatter.date(from: value)
-            default:
-                break
-            }
-        }
-        
-        // Validar que tenemos todos los campos
-        guard let id = id,
-              let title = title,
-              let createdAt = createdAt,
-              let modifiedAt = modifiedAt else {
-            throw RepositoryError.decodingError(
-                NSError(domain: "NoteRepository", code: 3, userInfo: [
-                    NSLocalizedDescriptionKey: "Frontmatter incompleto o inválido"
-                ])
-            )
-        }
-        
-        return (id, title, createdAt, modifiedAt)
-    }
-    
-    /// Escapa caracteres especiales en YAML
-    private func escapeYAML(_ string: String) -> String {
-        // Si contiene ":", envolver en comillas
-        if string.contains(":") || string.contains("\"") {
-            return "\"\(string.replacingOccurrences(of: "\"", with: "\\\""))\""
-        }
-        return string
-    }
-    
-    /// Remueve escape de YAML
-    private func unescapeYAML(_ string: String) -> String {
-        var result = string
-        
-        // Remover comillas externas
-        if result.hasPrefix("\"") && result.hasSuffix("\"") {
-            result = String(result.dropFirst().dropLast())
-        }
-        
-        // Desescapar comillas internas
-        result = result.replacingOccurrences(of: "\\\"", with: "\"")
-        
-        return result
     }
     
     // MARK: - NoteRepositoryProtocol Implementation
