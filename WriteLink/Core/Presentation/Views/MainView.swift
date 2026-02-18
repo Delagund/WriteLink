@@ -59,11 +59,11 @@ struct MainView: View {
                     listViewModel.updateNote(savedNote)
                 } onDelete: {
                     // Callback: Al eliminar nota
-                    if let note = editorViewModel.note {
+                    let note = editorViewModel.note 
                         Task {
                             await listViewModel.deleteNote(note)
                         }
-                    }
+                    
                     self.editorViewModel = nil
                 }
             } else {

@@ -56,7 +56,7 @@ final class DIContainer {
     func makeNoteEditorViewModel() -> NoteEditorViewModel {
         NoteEditorViewModel(
             createUseCase: createNoteUseCase,
-            editUseCase: editUseCase,
+            editUseCase: editNoteUseCase,
             deleteUseCase: deleteNoteUseCase
         )
     }

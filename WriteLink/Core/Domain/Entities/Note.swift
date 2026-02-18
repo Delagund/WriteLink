@@ -9,7 +9,7 @@
 
 import Foundation
 
-nonisolated struct Note: Identifiable, Codable, Equatable, Sendable {
+nonisolated struct Note: Identifiable, Codable, Equatable, Sendable, Hashable {
     // MARK: - Properties
     
     /// Identificador único global (UUID v4)
