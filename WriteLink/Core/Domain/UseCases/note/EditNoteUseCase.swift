@@ -1,4 +1,4 @@
-// Use Case para editar una nota existente.
+/// Use Case para editar una nota existente.
 ///
 /// **Patrón Command:**
 /// - Operación "editar nota" encapsulada y ejecutable

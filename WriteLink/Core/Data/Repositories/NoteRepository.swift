@@ -15,7 +15,7 @@ actor NoteRepository: NoteRepositoryProtocol {
     private let baseDirectory: URL
         
     /// FileManager para operaciones de I/O
-    private let fileManager: FileManager
+    nonisolated(unsafe) var fileManager: FileManager
     
     /// Serializar el Markdown
     private let markdownSerializer: MarkdownSerializer
@@ -24,7 +24,7 @@ actor NoteRepository: NoteRepositoryProtocol {
     init(
         baseDirectory: URL? = nil,
         markdownSerializer: MarkdownSerializer = MarkdownSerializer()
-        ) async throws {
+        ) throws {
             self.fileManager = FileManager.default
             self.markdownSerializer = markdownSerializer
         
@@ -34,7 +34,7 @@ actor NoteRepository: NoteRepositoryProtocol {
             self.baseDirectory = customDirectory
         } else {
             // Directorio por defecto: ~/Documents/WriteLink
-            guard let documentDirectory = fileManager.urls(
+            guard let documentsDirectory = fileManager.urls(
                 for: .documentDirectory,
                 in: .userDomainMask
             ).first else {
@@ -46,17 +46,17 @@ actor NoteRepository: NoteRepositoryProtocol {
                     )
                 )
             }
-            self.baseDirectory = documentDirectory.appendingPathComponent("WriteLink")
+            self.baseDirectory = documentsDirectory.appendingPathComponent("WriteLink")
         }
    
         // Crea el directorio si no existe
-        try await createDirectoryIfNeeded()
+        try createDirectoryIfNeeded()
     }
     
     // MARK: - Private Helpers
         
     /// Crea el directorio base si no existe
-    func createDirectoryIfNeeded() async throws {
+    nonisolated func createDirectoryIfNeeded() throws {
         var isDirectory: ObjCBool = false
         let exists = fileManager.fileExists(
             atPath: baseDirectory.path,

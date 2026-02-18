@@ -1,10 +1,3 @@
-//
-//  UseCaseErrorsEnum.swift
-//  WriteLink
-//
-//  Created by Cristian on 11-02-26.
-//
-
 import Foundation
 
 // MARK: - Repository Errors
